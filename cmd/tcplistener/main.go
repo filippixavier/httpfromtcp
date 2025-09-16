@@ -68,7 +68,6 @@ func main() {
 		}
 
 		fmt.Println("Connection accepted")
-		getLinesChannel(connection)
 
 		ch := getLinesChannel(connection)
 
