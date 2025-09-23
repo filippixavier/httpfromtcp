@@ -1,54 +1,13 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"io"
+	"httpfromtcp/internal/request"
 	"log"
 	"net"
-	"strings"
 )
 
 const port = ":42069"
-
-func getLinesChannel(f io.ReadCloser) <-chan string {
-	lines := make(chan string)
-
-	go func() {
-		b := make([]byte, 8)
-		currentLineContents := ""
-
-		defer f.Close()
-		defer close(lines)
-
-		for {
-			n, err := f.Read(b)
-
-			if err != nil {
-				if currentLineContents != "" {
-					lines <- currentLineContents
-				}
-				if errors.Is(err, io.EOF) {
-					break
-				}
-				fmt.Printf("error: %s\n", err.Error())
-				break
-			}
-
-			str := string(b[:n])
-			parts := strings.Split(str, "\n")
-
-			for i := 0; i < len(parts)-1; i++ {
-				lines <- fmt.Sprintf("%s%s", currentLineContents, parts[i])
-				currentLineContents = ""
-			}
-
-			currentLineContents += parts[len(parts)-1]
-		}
-	}()
-
-	return lines
-}
 
 func main() {
 	listener, err := net.Listen("tcp", port)
@@ -69,11 +28,16 @@ func main() {
 
 		fmt.Println("Connection accepted")
 
-		ch := getLinesChannel(connection)
+		req, err := request.RequestFromReader(connection)
 
-		for str := range ch {
-			fmt.Println(str)
+		if err != nil {
+			log.Fatalf("error when reading from reader: %s", err)
 		}
+
+		fmt.Println("Request line:")
+		fmt.Printf("- Method: %v\n", req.RequestLine.Method)
+		fmt.Printf("- Target: %v\n", req.RequestLine.RequestTarget)
+		fmt.Printf("- Version: %v\n", req.RequestLine.HttpVersion)
 
 		fmt.Println("Connection to ", connection.RemoteAddr(), "closed")
 	}
