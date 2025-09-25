@@ -18,6 +18,15 @@ func TestParse(t *testing.T) {
 	assert.Equal(t, 23, n)
 	assert.False(t, done)
 
+	// Test: append to existing header
+	data = []byte("Host: toto\r\n\r\n")
+	n, done, err = headers.Parse(data)
+	require.NoError(t, err)
+	require.NotNil(t, headers)
+	assert.Equal(t, "localhost:42069, toto", headers["host"])
+	assert.Equal(t, 12, n)
+	assert.False(t, done)
+
 	// Test: Valid single header (lowercase)
 	headers = NewHeaders()
 	data = []byte("live-test: localhost:42069\r\n\r\n")

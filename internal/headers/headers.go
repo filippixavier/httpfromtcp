@@ -45,7 +45,14 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 			return read, false, fmt.Errorf("header contain invalid charaters")
 		}
 
-		h[strings.ToLower(parts[0])] = parts[1]
+		key := strings.ToLower(parts[0])
+
+		if val, ok := h[key]; ok {
+			h[key] = val + ", " + parts[1]
+		} else {
+			h[key] = parts[1]
+		}
+
 		read += len(line) + 2
 	}
 
