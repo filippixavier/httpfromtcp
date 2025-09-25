@@ -1,10 +1,13 @@
 package headers
 
 import (
+	"bytes"
 	"fmt"
 	"regexp"
 	"strings"
 )
+
+const crlf = "\r\n"
 
 type Headers map[string]string
 
@@ -14,11 +17,30 @@ func NewHeaders() Headers {
 	return headers
 }
 
+func (h Headers) Set(key, value string) {
+	k := strings.ToLower(key)
+
+	if val, ok := h[k]; ok {
+		h[k] = val + ", " + value
+	} else {
+		h[k] = value
+	}
+}
+
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
+	idx := bytes.Index(data, []byte(crlf))
+	if idx == -1 {
+		return 0, false, nil
+	}
+	if idx == 0 {
+		// the empty line
+		// headers are done, consume the CRLF
+		return 2, true, nil
+	}
+
 	str := string(data)
 
 	lines := strings.Split(str, "\r\n")
-	read := 0
 
 	invalidReg, err := regexp.Compile("[^a-zA-Z0-9!#$%&'*+-.^_`|~]")
 
@@ -34,27 +56,19 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		parts := strings.Split(line, ": ")
 
 		if len(parts) != 2 {
-			return read, false, fmt.Errorf("invalid header field")
+			return 0, false, fmt.Errorf("invalid header field")
 		}
 
 		if strings.Contains(parts[0], " ") || strings.Contains(parts[1], " ") {
-			return read, false, fmt.Errorf("invalid space header")
+			return 0, false, fmt.Errorf("invalid space header")
 		}
 
 		if invalidReg.MatchString(parts[0]) {
-			return read, false, fmt.Errorf("header contain invalid charaters")
+			return 0, false, fmt.Errorf("header contain invalid charaters")
 		}
 
-		key := strings.ToLower(parts[0])
-
-		if val, ok := h[key]; ok {
-			h[key] = val + ", " + parts[1]
-		} else {
-			h[key] = parts[1]
-		}
-
-		read += len(line) + 2
+		h.Set(parts[0], parts[1])
 	}
 
-	return read, false, nil
+	return idx + 2, false, nil
 }
