@@ -25,8 +25,8 @@ type requestState int
 
 const (
 	requestStateInitialized requestState = iota
-	requestStateParsingHeaders
 	requestStateDone
+	requestStateParsingHeader
 )
 
 const crlf = "\r\n"
@@ -49,44 +49,21 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		numBytesRead, err := reader.Read(buf[readToIndex:])
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return nil, fmt.Errorf("end of header missing")
+				if req.state != requestStateDone {
+					return nil, fmt.Errorf("incomplete request, in state: %d, read n bytes on EOF: %d", req.state, numBytesRead)
+				}
 			}
 			return nil, err
 		}
 		readToIndex += numBytesRead
-		if req.state == requestStateInitialized {
-			numBytesParsed, err := req.parse(buf[:readToIndex])
-			if numBytesParsed != 0 {
-				req.state = requestStateParsingHeaders
-			}
-			if err != nil {
-				return nil, err
-			}
 
-			copy(buf, buf[numBytesParsed:])
-			readToIndex -= numBytesParsed
+		numBytesParsed, err := req.parse(buf[:readToIndex])
+		if err != nil {
+			return nil, err
 		}
 
-		if req.state == requestStateParsingHeaders {
-			for {
-				numBytesParsed, done, err := req.Headers.Parse(buf[:readToIndex])
-				if err != nil {
-					return nil, err
-				}
-
-				if numBytesParsed == 0 {
-					break
-				}
-
-				if !done {
-					copy(buf, buf[numBytesParsed:])
-					readToIndex -= numBytesParsed
-				} else {
-					req.state = requestStateDone
-					break
-				}
-			}
-		}
+		copy(buf, buf[numBytesParsed:])
+		readToIndex -= numBytesParsed
 	}
 	return req, nil
 }
@@ -153,8 +130,28 @@ func (r *Request) parse(data []byte) (int, error) {
 			return 0, nil
 		}
 		r.RequestLine = *requestLine
-		r.state = requestStateDone
+		r.state = requestStateParsingHeader
 		return n, nil
+	case requestStateParsingHeader:
+		read := 0
+		for {
+			n, done, err := r.Headers.Parse(data[read:])
+
+			if err != nil {
+				return 0, err
+			}
+
+			if done {
+				r.state = requestStateDone
+				return read + n, nil
+			}
+
+			if n == 0 {
+				return read, nil
+			} else {
+				read += n
+			}
+		}
 	case requestStateDone:
 		return 0, fmt.Errorf("error: trying to read data in a done state")
 	default:
