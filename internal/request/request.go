@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"httpfromtcp/internal/headers"
 	"io"
 	"strings"
 )
 
 type Request struct {
 	RequestLine RequestLine
-
-	state requestState
+	Headers     headers.Headers
+	state       requestState
 }
 
 type RequestLine struct {
@@ -24,6 +25,7 @@ type requestState int
 
 const (
 	requestStateInitialized requestState = iota
+	requestStateParsingHeaders
 	requestStateDone
 )
 
@@ -34,7 +36,8 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, bufferSize)
 	readToIndex := 0
 	req := &Request{
-		state: requestStateInitialized,
+		state:   requestStateInitialized,
+		Headers: headers.NewHeaders(),
 	}
 	for req.state != requestStateDone {
 		if readToIndex >= len(buf) {
@@ -46,20 +49,44 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		numBytesRead, err := reader.Read(buf[readToIndex:])
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				req.state = requestStateDone
-				break
+				return nil, fmt.Errorf("end of header missing")
 			}
 			return nil, err
 		}
 		readToIndex += numBytesRead
+		if req.state == requestStateInitialized {
+			numBytesParsed, err := req.parse(buf[:readToIndex])
+			if numBytesParsed != 0 {
+				req.state = requestStateParsingHeaders
+			}
+			if err != nil {
+				return nil, err
+			}
 
-		numBytesParsed, err := req.parse(buf[:readToIndex])
-		if err != nil {
-			return nil, err
+			copy(buf, buf[numBytesParsed:])
+			readToIndex -= numBytesParsed
 		}
 
-		copy(buf, buf[numBytesParsed:])
-		readToIndex -= numBytesParsed
+		if req.state == requestStateParsingHeaders {
+			for {
+				numBytesParsed, done, err := req.Headers.Parse(buf[:readToIndex])
+				if err != nil {
+					return nil, err
+				}
+
+				if numBytesParsed == 0 {
+					break
+				}
+
+				if !done {
+					copy(buf, buf[numBytesParsed:])
+					readToIndex -= numBytesParsed
+				} else {
+					req.state = requestStateDone
+					break
+				}
+			}
+		}
 	}
 	return req, nil
 }
