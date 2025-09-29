@@ -38,6 +38,12 @@ func main() {
 		fmt.Printf("- Method: %v\n", req.RequestLine.Method)
 		fmt.Printf("- Target: %v\n", req.RequestLine.RequestTarget)
 		fmt.Printf("- Version: %v\n", req.RequestLine.HttpVersion)
+		fmt.Printf("- Request Line: %v\n", req.RequestLine.HttpVersion)
+		fmt.Println("Headers:")
+
+		for key := range req.Headers {
+			fmt.Printf("- %v: %v\n", key, req.Headers[key])
+		}
 
 		fmt.Println("Connection to ", connection.RemoteAddr(), "closed")
 	}

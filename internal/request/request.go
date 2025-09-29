@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"httpfromtcp/internal/headers"
 	"io"
+	"strconv"
 	"strings"
 )
 
 type Request struct {
 	RequestLine RequestLine
 	Headers     headers.Headers
+	Body        []byte
 	state       requestState
 }
 
@@ -25,8 +27,9 @@ type requestState int
 
 const (
 	requestStateInitialized requestState = iota
-	requestStateDone
 	requestStateParsingHeader
+	requestStateParsingBody
+	requestStateDone
 )
 
 const crlf = "\r\n"
@@ -38,6 +41,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	req := &Request{
 		state:   requestStateInitialized,
 		Headers: headers.NewHeaders(),
+		Body:    make([]byte, 0),
 	}
 	for req.state != requestStateDone {
 		if readToIndex >= len(buf) {
@@ -118,6 +122,22 @@ func requestLineFromString(str string) (*RequestLine, error) {
 }
 
 func (r *Request) parse(data []byte) (int, error) {
+	totalBytesParsed := 0
+	for r.state != requestStateDone {
+		n, err := r.parseSingle(data[totalBytesParsed:])
+		if err != nil {
+			return 0, err
+		}
+		totalBytesParsed += n
+		if n == 0 {
+			break
+		}
+	}
+
+	return totalBytesParsed, nil
+}
+
+func (r *Request) parseSingle(data []byte) (int, error) {
 	switch r.state {
 	case requestStateInitialized:
 		requestLine, n, err := parseRequestLine(data)
@@ -142,7 +162,12 @@ func (r *Request) parse(data []byte) (int, error) {
 			}
 
 			if done {
-				r.state = requestStateDone
+				rawSize := r.Headers.Get("Content-Length")
+				if rawSize == "" || rawSize == "0" {
+					r.state = requestStateDone
+				} else {
+					r.state = requestStateParsingBody
+				}
 				return read + n, nil
 			}
 
@@ -152,6 +177,25 @@ func (r *Request) parse(data []byte) (int, error) {
 				read += n
 			}
 		}
+	case requestStateParsingBody:
+		rawSize := r.Headers.Get("Content-Length")
+		size, err := strconv.Atoi(rawSize)
+		if err != nil {
+			return 0, err
+		}
+
+		r.Body = append(r.Body, data...)
+
+		if len(r.Body) > size {
+			return 0, fmt.Errorf("error: expected body of size %d, got %d", size, len(r.Body))
+		}
+
+		if len(r.Body) == size {
+			r.state = requestStateDone
+		}
+
+		return len(data), nil
+
 	case requestStateDone:
 		return 0, fmt.Errorf("error: trying to read data in a done state")
 	default:
