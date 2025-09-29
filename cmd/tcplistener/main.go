@@ -45,6 +45,9 @@ func main() {
 			fmt.Printf("- %v: %v\n", key, req.Headers[key])
 		}
 
+		fmt.Println("Body:")
+		fmt.Printf("%s\n", req.Body)
+
 		fmt.Println("Connection to ", connection.RemoteAddr(), "closed")
 	}
 }
