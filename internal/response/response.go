@@ -32,5 +32,7 @@ func WriteHeaders(w io.Writer, headers headers.Headers) error {
 
 	_, err = fmt.Fprintf(w, "Content-Type: %s\r\n", headers.Get("Content-Type"))
 
+	fmt.Fprint(w, "\r\n")
+
 	return err
 }

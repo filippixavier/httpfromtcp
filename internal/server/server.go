@@ -18,24 +18,12 @@ type HandlerError struct {
 
 type Handler func(w io.Writer, req *request.Request) *HandlerError
 
-func (h HandlerError) print(w io.Writer) error {
-	err := response.WriteStatusLine(w, h.StatusCode)
-
-	if err != nil {
-		return err
-	}
-
+func (h HandlerError) Write(w io.Writer) {
+	response.WriteStatusLine(w, h.StatusCode)
 	headers := response.GetDefaultHeaders(len(h.ErrorMsg))
+	response.WriteHeaders(w, headers)
 
-	err = response.WriteHeaders(w, headers)
-
-	if err != nil {
-		return nil
-	}
-
-	_, err = fmt.Fprintf(w, "\r\n%s", h.ErrorMsg)
-
-	return err
+	w.Write(h.ErrorMsg)
 }
 
 type Server struct {
@@ -80,7 +68,7 @@ func (s *Server) handle(conn net.Conn) {
 	reqError := s.handler(buf, req)
 
 	if reqError != nil {
-		reqError.print(conn)
+		reqError.Write(conn)
 		return
 	}
 
