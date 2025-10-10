@@ -1,10 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 	"httpfromtcp/internal/server"
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -13,24 +13,74 @@ import (
 
 const port = 42069
 
-func test(w io.Writer, req *request.Request) *server.HandlerError {
-	var h *server.HandlerError
+const badRequest = `<html>
+  <head>
+    <title>400 Bad Request</title>
+  </head>
+  <body>
+    <h1>Bad Request</h1>
+    <p>Your request honestly kinda sucked.</p>
+  </body>
+</html>`
 
-	if req.RequestLine.RequestTarget == "/yourproblem" {
-		h = &server.HandlerError{
-			StatusCode: response.BadRequest,
-			ErrorMsg:   []byte("Your problem is not my problem\n"),
-		}
-	} else if req.RequestLine.RequestTarget == "/myproblem" {
-		h = &server.HandlerError{
-			StatusCode: response.InternalError,
-			ErrorMsg:   []byte("Woopsie, my bad\n"),
-		}
-	} else {
-		w.Write([]byte("All good, frfr\n"))
+const internalError = `<html>
+  <head>
+    <title>500 Internal Server Error</title>
+  </head>
+  <body>
+    <h1>Internal Server Error</h1>
+    <p>Okay, you know what? This one is on me.</p>
+  </body>
+</html>`
+
+const ok = `<html>
+  <head>
+    <title>200 OK</title>
+  </head>
+  <body>
+    <h1>Success!</h1>
+    <p>Your request was an absolute banger.</p>
+  </body>
+</html>`
+
+func test(w response.Writer, req *request.Request) {
+	headers := response.GetDefaultHeaders(0)
+	headers.Override("Content-Type", "text/html")
+
+	var body []byte
+	var status response.StatusCode
+
+	switch req.RequestLine.RequestTarget {
+	case "/yourproblem":
+		status = response.BadRequest
+		body = []byte(badRequest)
+	case "/myproblem":
+		status = response.InternalError
+		body = []byte(internalError)
+	default:
+		status = response.Ok
+		body = []byte(ok)
 	}
 
-	return h
+	headers.Override("Content-Length", fmt.Sprintf("%d", len(body)))
+
+	err := w.WriteStatusLine(status)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	err = w.WriteHeaders(headers)
+
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	_, err = w.WriteBody(body)
+
+	if err != nil {
+		fmt.Println(err)
+	}
+
 }
 
 func main() {

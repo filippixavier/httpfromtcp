@@ -15,24 +15,51 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 	return h
 }
 
-func WriteHeaders(w io.Writer, headers headers.Headers) error {
-	// Teacher use a for ... range loop to access content, which *should* work for small maps, but according to this
-	// https://medium.com/@AlexanderObregon/go-map-internals-and-why-ordering-isnt-stable-69551a7582c8
-	// article, maps doesn't have a stable order.
-	// Then again, headers order doesn't matter so...
-	_, err := fmt.Fprintf(w, "Content-Length: %s\r\n", headers.Get("Content-Length"))
-	if err != nil {
-		return err
+type Writer struct {
+	Writer io.Writer
+	state  responseState
+}
+
+type responseState int
+
+const (
+	stateWriteStatusLine = iota
+	stateWriteHeaders
+	stateWriteBody
+)
+
+func NewWriter(w io.Writer) Writer {
+	return Writer{
+		Writer: w,
+		state:  stateWriteStatusLine,
+	}
+}
+
+func (w *Writer) WriteHeaders(headers headers.Headers) error {
+	if w.state != stateWriteHeaders {
+		return fmt.Errorf("must call WriteStatusLines first")
 	}
 
-	_, err = fmt.Fprintf(w, "Connection: %s\r\n", headers.Get("Connection"))
-	if err != nil {
-		return err
+	for name, value := range headers {
+		_, err := fmt.Fprintf(w.Writer, "%s: %s\r\n", name, value)
+		if err != nil {
+			return err
+		}
 	}
 
-	_, err = fmt.Fprintf(w, "Content-Type: %s\r\n", headers.Get("Content-Type"))
+	_, err := fmt.Fprintf(w.Writer, "\r\n")
 
-	fmt.Fprint(w, "\r\n")
+	if err == nil {
+		w.state = stateWriteBody
+	}
 
 	return err
+}
+
+func (w *Writer) WriteBody(p []byte) (int, error) {
+	if w.state != stateWriteBody {
+		return 0, fmt.Errorf("must call WriteHeaders first")
+	}
+
+	return w.Writer.Write(p)
 }

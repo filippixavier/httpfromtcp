@@ -2,7 +2,6 @@ package response
 
 import (
 	"fmt"
-	"io"
 )
 
 type StatusCode int
@@ -27,8 +26,15 @@ func getStatusLine(statusCode StatusCode) []byte {
 	return []byte(fmt.Sprintf("HTTP/1.1 %d %s\r\n", statusCode, reason))
 }
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
-	_, err := w.Write(getStatusLine(statusCode))
+func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
+	if w.state != stateWriteStatusLine {
+		return fmt.Errorf("cannot call WriteStatusline a second time")
+	}
+	_, err := w.Writer.Write(getStatusLine(statusCode))
+
+	if err == nil {
+		w.state = stateWriteHeaders
+	}
 
 	return err
 }
