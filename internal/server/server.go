@@ -43,12 +43,17 @@ func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 
 	req, err := request.RequestFromReader(conn)
+	writer := response.NewWriter(conn)
 
 	if err != nil {
-		return
+		if err != nil {
+			writer.WriteStatusLine(response.BadRequest)
+			body := []byte(fmt.Sprintf("Error parsing request: %v", err))
+			writer.WriteHeaders(response.GetDefaultHeaders(len(body)))
+			writer.WriteBody(body)
+			return
+		}
 	}
-
-	writer := response.NewWriter(conn)
 
 	s.handler(writer, req)
 }
