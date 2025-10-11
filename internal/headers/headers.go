@@ -41,6 +41,12 @@ func (h Headers) Get(key string) string {
 	return ""
 }
 
+func (h Headers) Delete(key string) {
+	k := strings.ToLower(key)
+
+	delete(h, k)
+}
+
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	idx := bytes.Index(data, []byte(crlf))
 	if idx == -1 {

@@ -1,10 +1,13 @@
 package response
 
 import (
+	"bytes"
 	"fmt"
 	"httpfromtcp/internal/headers"
 	"io"
 )
+
+const crlf = "\r\n"
 
 func GetDefaultHeaders(contentLen int) headers.Headers {
 	h := headers.NewHeaders()
@@ -62,4 +65,30 @@ func (w *Writer) WriteBody(p []byte) (int, error) {
 	}
 
 	return w.Writer.Write(p)
+}
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+
+	if bytes.Contains(p, []byte("/r/n")) {
+		fmt.Println("aie aie aie caramba!")
+	}
+
+	// Remember! The chunk length is in HEXADECIMAL!
+	_, err := fmt.Fprintf(w.Writer, "%X\r\n", len(p))
+
+	if err != nil {
+		return 0, err
+	}
+
+	numBytesSent, err := fmt.Fprintf(w.Writer, "%s\r\n", p)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return numBytesSent - 2, nil
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	return fmt.Fprintf(w.Writer, "0\r\n\r\n")
 }
