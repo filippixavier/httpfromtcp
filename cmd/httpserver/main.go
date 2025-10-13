@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"httpfromtcp/internal/request"
@@ -61,6 +62,7 @@ func handleProxy(w response.Writer, req *request.Request) {
 
 	headers.Delete("Content-Length")
 	headers.Set("Transfer-Encoding", "chunked")
+	headers.Set("Trailer", "X-Content-SHA256,X-Content-Length")
 
 	buf := make([]byte, 1024)
 	readToIndex := 0
@@ -99,17 +101,24 @@ func handleProxy(w response.Writer, req *request.Request) {
 
 		readToIndex += numBytesRead
 
-		numBytesSent, err := w.WriteChunkedBody(buf[:readToIndex])
+		_, err = w.WriteChunkedBody(buf[:readToIndex])
 
 		if err != nil {
 			fmt.Println(err)
 			handleError(w, req, err)
 			return
 		}
+	}
 
-		copy(buf, buf[numBytesSent:])
-		readToIndex -= numBytesSent
+	checksum := sha256.Sum256(buf[:readToIndex])
 
+	headers.Set("X-Content-SHA256", fmt.Sprintf("%x", checksum))
+	headers.Set("X-Content-Length", fmt.Sprintf("%d", len(buf[:readToIndex])))
+
+	err = w.WriteTrailers(headers)
+
+	if err != nil {
+		fmt.Printf("%v\n", err)
 	}
 }
 

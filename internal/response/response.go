@@ -1,13 +1,11 @@
 package response
 
 import (
-	"bytes"
 	"fmt"
 	"httpfromtcp/internal/headers"
 	"io"
+	"strings"
 )
-
-const crlf = "\r\n"
 
 func GetDefaultHeaders(contentLen int) headers.Headers {
 	h := headers.NewHeaders()
@@ -29,6 +27,7 @@ const (
 	stateWriteStatusLine = iota
 	stateWriteHeaders
 	stateWriteBody
+	stateWriteTrailers
 )
 
 func NewWriter(w io.Writer) Writer {
@@ -43,7 +42,15 @@ func (w *Writer) WriteHeaders(headers headers.Headers) error {
 		return fmt.Errorf("must call WriteStatusLines first")
 	}
 
+	trailers := strings.Split(headers.Get("Trailer"), ",")
+
+OUTER:
 	for name, value := range headers {
+		for _, trailer := range trailers {
+			if strings.ToLower(trailer) == name {
+				continue OUTER
+			}
+		}
 		_, err := fmt.Fprintf(w.Writer, "%s: %s\r\n", name, value)
 		if err != nil {
 			return err
@@ -64,17 +71,21 @@ func (w *Writer) WriteBody(p []byte) (int, error) {
 		return 0, fmt.Errorf("must call WriteHeaders first")
 	}
 
-	return w.Writer.Write(p)
+	n, err := w.Writer.Write(p)
+	if err == nil {
+		w.state = stateWriteTrailers
+	}
+
+	return n, err
 }
 
 func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
-
-	if bytes.Contains(p, []byte("/r/n")) {
-		fmt.Println("aie aie aie caramba!")
+	if w.state != stateWriteBody {
+		return 0, fmt.Errorf("must call WriteHeaders first")
 	}
 
 	// Remember! The chunk length is in HEXADECIMAL!
-	_, err := fmt.Fprintf(w.Writer, "%X\r\n", len(p))
+	_, err := fmt.Fprintf(w.Writer, "%x\r\n", len(p))
 
 	if err != nil {
 		return 0, err
@@ -90,5 +101,31 @@ func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
 }
 
 func (w *Writer) WriteChunkedBodyDone() (int, error) {
-	return fmt.Fprintf(w.Writer, "0\r\n\r\n")
+	if w.state != stateWriteBody {
+		return 0, fmt.Errorf("must call WriteHeaders first")
+	}
+	w.state = stateWriteTrailers
+	return w.Writer.Write([]byte("0\r\n"))
+}
+
+func (w *Writer) WriteTrailers(h headers.Headers) error {
+	defer w.Writer.Write([]byte("\r\n"))
+	trailers := h.Get("Trailer")
+
+	if len(trailers) == 0 {
+		return nil
+	}
+
+	splittedTrailers := strings.Split(trailers, ",")
+
+	for _, trailer := range splittedTrailers {
+		value := h.Get(trailer)
+		_, err := fmt.Fprintf(w.Writer, "%s: %s\r\n", trailer, value)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
