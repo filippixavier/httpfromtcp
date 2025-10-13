@@ -122,6 +122,40 @@ func handleProxy(w response.Writer, req *request.Request) {
 	}
 }
 
+func handleVideo(w response.Writer, r *request.Request) {
+	headers := response.GetDefaultHeaders(0)
+
+	headers.Override("Content-Type", "video/mp4")
+	headers.Delete("Content-Length")
+
+	file, err := os.ReadFile("assets/vim.mp4")
+
+	if err != nil {
+		handleError(w, r, err)
+		return
+	}
+
+	err = w.WriteStatusLine(response.Ok)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	err = w.WriteHeaders(headers)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	_, err = w.WriteBody(file)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+}
+
 func handleError(w response.Writer, _ *request.Request, e error) {
 	headers := response.GetDefaultHeaders(0)
 	errorString := fmt.Sprintf("%e", e)
@@ -164,6 +198,9 @@ func handler(w response.Writer, req *request.Request) {
 	case "/myproblem":
 		status = response.InternalError
 		body = []byte(internalError)
+	case "/video":
+		handleVideo(w, req)
+		return
 	default:
 		status = response.Ok
 		body = []byte(ok)

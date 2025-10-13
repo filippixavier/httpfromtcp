@@ -42,15 +42,7 @@ func (w *Writer) WriteHeaders(headers headers.Headers) error {
 		return fmt.Errorf("must call WriteStatusLines first")
 	}
 
-	trailers := strings.Split(headers.Get("Trailer"), ",")
-
-OUTER:
 	for name, value := range headers {
-		for _, trailer := range trailers {
-			if strings.ToLower(trailer) == name {
-				continue OUTER
-			}
-		}
 		_, err := fmt.Fprintf(w.Writer, "%s: %s\r\n", name, value)
 		if err != nil {
 			return err
@@ -111,10 +103,6 @@ func (w *Writer) WriteChunkedBodyDone() (int, error) {
 func (w *Writer) WriteTrailers(h headers.Headers) error {
 	defer w.Writer.Write([]byte("\r\n"))
 	trailers := h.Get("Trailer")
-
-	if len(trailers) == 0 {
-		return nil
-	}
 
 	splittedTrailers := strings.Split(trailers, ",")
 
